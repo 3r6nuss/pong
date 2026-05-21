@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pong Mobile Controller</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #121214;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            box-sizing: border-box;
+            touch-action: none;
+            overflow: hidden;
+        }
+        #join-screen {
+            text-align: center;
+            width: 100%;
+            max-width: 300px;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        .btn-container {
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            flex: 1;
+            padding: 12px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        #control-screen {
+            display: none;
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        #percent {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 110px;
+            font-weight: bold;
+            opacity: 0.3;
+            pointer-events: none;
+        }
+        #touch-area {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="join-screen">
+        <h2>Pong Steuerung</h2>
+        <input type="text" id="name-input" placeholder="Dein Name" />
+        <div class="btn-container">
+            <button onclick="join('left')">Links</button>
+            <button onclick="join('right')">Rechts</button>
+        </div>
+    </div>
+
+    <div id="control-screen">
+        <div id="percent">50%</div>
+        <div id="touch-area"></div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = typeof io === "function" ? io() : null;
+        const joinScreen = document.getElementById('join-screen');
+        const controlScreen = document.getElementById('control-screen');
+        const nameInput = document.getElementById('name-input');
+        const touchArea = document.getElementById('touch-area');
+        const percent = document.getElementById('percent');
+
+        function join(side) {
+            const name = nameInput.value.trim() || (side === 'left' ? 'Spieler Links' : 'Spieler Rechts');
+            if (socket) {
+                socket.emit('joinGame', { side, name });
+            }
+            joinScreen.style.display = 'none';
+            controlScreen.style.display = 'block';
+        }
+
+        function sendTouch(y) {
+            const relativeY = Math.max(0, Math.min(1, y));
+            percent.textContent = Math.round(relativeY * 100) + '%';
+            if (socket) {
+                socket.emit('touchY', relativeY);
+            }
+        }
+
+        touchArea.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            sendTouch(touch.clientY / window.innerHeight);
+        }, { passive: false });
+
+        touchArea.addEventListener('mousemove', (e) => {
+            if (e.buttons === 1) {
+                sendTouch(e.clientY / window.innerHeight);
+            }
+        });
+    </script>
+</body>
+</html>

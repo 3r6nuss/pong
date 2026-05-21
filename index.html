@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pong Game</title>
+</head>
+<body style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background-color: #f0f2f5; font-family: Arial, sans-serif; margin: 0; padding: 20px; box-sizing: border-box;">
+    <canvas id="playground" width="750" height="500" style="border: 2px solid #333; border-radius: 8px; background-color: #000;"></canvas>
+
+    <div style="margin-top: 20px; text-align: center;">
+        <img id="qr-code" src="" alt="QR Code" style="width: 120px; height: 120px; border: 1px solid #ccc; padding: 4px; background: white;" />
+        <p style="margin: 5px 0 0 0; font-size: 14px; color: #555;">Handy scannen zum Verbinden</p>
+    </div>
+
+    <script src="/config.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const canvas = document.getElementById('playground');
+        const context = canvas.getContext('2d');
+        const PADDLE_WIDTH = 10;
+        const PADDLE_HEIGHT = 60;
+        const PADDLE_SPEED = 300;
+        const MAX_BOUNCE_SPEED = 350;
+        const BALL_SPEED_START = 100;
+        const WINNING_SCORE = 5;
+        var points_left = 0;
+        var points_right = 0;
+
+        const players = {
+            left: {
+                name: "Spieler Links",
+                wins: 0,
+                connected: false
+            },
+            right: {
+                name: "Spieler Rechts",
+                wins: 0,
+                connected: false
+            }
+        };
+
+        let lastTime = 0;
+        let ball = {
+            x: 50,
+            y: 200,
+            size: 10,
+            speedX: BALL_SPEED_START,
+            speedY: 0
+        };
+
+        let paddleLeft = {
+            x: 20,
+            y: (canvas.height / 2) - (PADDLE_HEIGHT / 2),
+            width: PADDLE_WIDTH,
+            height: PADDLE_HEIGHT
+        };
+
+        let paddleRight = {
+            x: canvas.width - 20 - PADDLE_WIDTH,
+            y: (canvas.height / 2) - (PADDLE_HEIGHT / 2),
+            width: PADDLE_WIDTH,
+            height: PADDLE_HEIGHT
+        };
+
+        // Socket.IO
+        const socket = typeof io === "function" ? io() : null;
+        let remotePaddleYLeft = null;
+        let remotePaddleTimestampLeft = 0;
+        let remotePaddleYRight = null;
+        let remotePaddleTimestampRight = 0;
+
+        if (socket) {
+            socket.on('playerJoined', (data) => {
+                if (data && data.side && players[data.side]) {
+                    players[data.side].name = data.name;
+                    players[data.side].connected = true;
+                    console.log(`Spieler auf Seite ${data.side} registriert: ${data.name}`);
+                }
+            });
+
+            socket.on('updatePaddle', (data) => {
+                if (!data || !data.side) return;
+
+                let num = Number(data.relativeY);
+                if (Number.isNaN(num)) return;
+                num = Math.max(0, Math.min(1, num));
+
+                if (data.side === 'left') {
+                    remotePaddleYLeft = num;
+                    remotePaddleTimestampLeft = Date.now();
+                    players.left.connected = true;
+                } else if (data.side === 'right') {
+                    remotePaddleYRight = num;
+                    remotePaddleTimestampRight = Date.now();
+                    players.right.connected = true;
+                }
+            });
+        }
+
+        // Detect if running on a public domain/subdomain
+        const isPublicDomain = window.location.hostname !== "localhost" && 
+                               window.location.hostname !== "127.0.0.1" && 
+                               !window.location.hostname.startsWith("192.168.");
+        
+        const serverUrl = isPublicDomain ? window.location.origin : (window.SERVER_URL || window.location.origin);
+        const mobileUrl = serverUrl + "/mobile.html";
+        const qrImg = document.getElementById("qr-code");
+        if (qrImg) {
+            qrImg.src = "https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=" + encodeURIComponent(mobileUrl);
+        }
+
+        const keys = {
+            ArrowUp: false,
+            ArrowDown: false,
+            w: false,
+            s: false
+        };
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key in keys) keys[e.key] = true;
+            if (e.key === "h" || e.key === "H") {
+                showHighscore();
+            }
+        });
+        window.addEventListener('keyup', (e) => { if (e.key in keys) keys[e.key] = false; });
+
+        function showHighscore() {
+            alert(
+                "Aktueller Highscore:\n\n" +
+                players.left.name + ": " + players.left.wins + " Sieg(e)\n" +
+                players.right.name + ": " + players.right.wins + " Sieg(e)"
+            );
+        }
+
+        function resetRound() {
+            points_left = 0;
+            points_right = 0;
+
+            paddleLeft.y = (canvas.height / 2) - (PADDLE_HEIGHT / 2);
+            paddleRight.y = (canvas.height / 2) - (PADDLE_HEIGHT / 2);
+
+            resetBall();
+        }
+
+        function handleRoundWin(side) {
+            players[side].wins += 1;
+
+            alert(
+                players[side].name + " gewinnt die Runde!\n\n" +
+                "Aktueller Highscore:\n" +
+                players.left.name + ": " + players.left.wins + " Sieg(e)\n" +
+                players.right.name + ": " + players.right.wins + " Sieg(e)"
+            );
+
+            resetRound();
+        }
+
+        function scorePoint(side) {
+            if (side === "left") {
+                points_left++;
+            } else {
+                points_right++;
+            }
+
+            if (points_left >= WINNING_SCORE) {
+                handleRoundWin("left");
+                return;
+            }
+
+            if (points_right >= WINNING_SCORE) {
+                handleRoundWin("right");
+                return;
+            }
+
+            if (side === "left") {
+                resetBall(1);
+            } else {
+                resetBall(-1);
+            }
+        }
+
+        function resetBall(direction = null) {
+            ball.x = canvas.width / 2 - (ball.size / 2);
+            ball.y = canvas.height / 2 - (ball.size / 2);
+
+            const startDirection = direction ?? (Math.random() > 0.5 ? 1 : -1);
+            ball.speedX = BALL_SPEED_START * startDirection;
+            ball.speedY = 0;
+        }
+
+        function handlePaddleMovement(deltaTime) {
+            const REMOTE_TIMEOUT = 1500;
+
+            // LEFT PADDLE
+            let usedPercentLeft = null;
+            if (remotePaddleYLeft !== null && (Date.now() - remotePaddleTimestampLeft) < REMOTE_TIMEOUT) {
+                usedPercentLeft = remotePaddleYLeft;
+            } else {
+                players.left.connected = false;
+            }
+
+            if (usedPercentLeft !== null) {
+                paddleLeft.y = (usedPercentLeft * canvas.height) - (paddleLeft.height / 2);
+            } else {
+                if (keys.w && paddleLeft.y > 0) paddleLeft.y -= PADDLE_SPEED * deltaTime;
+                if (keys.s && paddleLeft.y + paddleLeft.height < canvas.height) paddleLeft.y += PADDLE_SPEED * deltaTime;
+            }
+
+            if (paddleLeft.y < 0) paddleLeft.y = 0;
+            if (paddleLeft.y + paddleLeft.height > canvas.height) paddleLeft.y = canvas.height - paddleLeft.height;
+
+            // RIGHT PADDLE
+            let usedPercentRight = null;
+            if (remotePaddleYRight !== null && (Date.now() - remotePaddleTimestampRight) < REMOTE_TIMEOUT) {
+                usedPercentRight = remotePaddleYRight;
+            } else {
+                players.right.connected = false;
+            }
+
+            if (usedPercentRight !== null) {
+                paddleRight.y = (usedPercentRight * canvas.height) - (paddleRight.height / 2);
+            } else {
+                if (keys.ArrowUp && paddleRight.y > 0) paddleRight.y -= PADDLE_SPEED * deltaTime;
+                if (keys.ArrowDown && paddleRight.y + paddleRight.height < canvas.height) paddleRight.y += PADDLE_SPEED * deltaTime;
+            }
+
+            if (paddleRight.y < 0) paddleRight.y = 0;
+            if (paddleRight.y + paddleRight.height > canvas.height) paddleRight.y = canvas.height - paddleRight.height;
+        }
+
+        function checkCollisions() {
+            if (ball.y <= 0 || ball.y + ball.size >= canvas.height) {
+                ball.speedY *= -1;
+            }
+
+            let hitLeftX = ball.speedX < 0 && ball.x <= paddleLeft.x + paddleLeft.width && ball.x >= paddleLeft.x;
+            let hitLeftY = ball.y + ball.size >= paddleLeft.y && ball.y <= paddleLeft.y + paddleLeft.height;
+            if (hitLeftX && hitLeftY) {
+                applyBounce(paddleLeft);
+                ball.x = paddleLeft.x + paddleLeft.width;
+            }
+
+            let hitRightX = ball.speedX > 0 && ball.x + ball.size >= paddleRight.x && ball.x + ball.size <= paddleRight.x + paddleRight.width;
+            let hitRightY = ball.y + ball.size >= paddleRight.y && ball.y <= paddleRight.y + paddleRight.height;
+            if (hitRightX && hitRightY) {
+                applyBounce(paddleRight);
+                ball.x = paddleRight.x - ball.size;
+            }
+
+            if (ball.x + ball.size < 0) {
+                scorePoint("right");
+            }
+
+            if (ball.x > canvas.width) {
+                scorePoint("left");
+            }
+        }
+
+        function applyBounce(paddle) {
+            let paddleCenter = paddle.y + (paddle.height / 2);
+            let ballCenter = ball.y + (ball.size / 2);
+            let normalizedHit = (ballCenter - paddleCenter) / (paddle.height / 2);
+
+            ball.speedY = normalizedHit * MAX_BOUNCE_SPEED;
+            ball.speedX *= -1;
+        }
+
+        function update(deltaTime) {
+            ball.x += ball.speedX * deltaTime;
+            ball.y += ball.speedY * deltaTime;
+
+            handlePaddleMovement(deltaTime);
+            checkCollisions();
+        }
+
+        function draw() {
+            context.fillStyle = "black";
+            context.fillRect(0, 0, canvas.width, canvas.height);
+
+            context.fillStyle = "white";
+            context.fillRect(ball.x, ball.y, ball.size, ball.size);
+            context.fillRect(paddleLeft.x, paddleLeft.y, paddleLeft.width, paddleLeft.height);
+            context.fillRect(paddleRight.x, paddleRight.y, paddleRight.width, paddleRight.height);
+            context.textAlign = "center";
+            context.font = "18px Arial";
+
+            const leftDisplayName = players.left.name + (players.left.connected ? " (connected)" : "");
+            const rightDisplayName = players.right.name + (players.right.connected ? " (connected)" : "");
+
+            context.fillText(leftDisplayName, canvas.width / 4, 30);
+            context.fillText(rightDisplayName, canvas.width / 4 * 3, 30);
+
+            context.font = "30px Arial";
+            context.fillText(points_left, canvas.width / 4, 70);
+            context.fillText(points_right, canvas.width / 4 * 3, 70);
+
+            context.font = "14px Arial";
+            context.fillText("Siege: " + players.left.wins, canvas.width / 4, 95);
+            context.fillText("Siege: " + players.right.wins, canvas.width / 4 * 3, 95);
+        }
+
+        function gameLoop(timestamp) {
+            let deltaTime = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+
+            update(deltaTime || 0);
+            draw();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
