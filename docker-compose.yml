@@ -1,7 +1,8 @@
 version: "3.8"
 services:
-  projekt-jonar:
+  pong-game:
     build: .
+    container_name: pong-game
     ports:
       - "3000:3000"
     restart: unless-stopped
