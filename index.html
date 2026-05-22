@@ -201,7 +201,15 @@
             }
 
             if (usedPercentLeft !== null) {
-                paddleLeft.y = (usedPercentLeft * canvas.height) - (paddleLeft.height / 2);
+                // smooth movement towards target to avoid jumps
+                const targetYLeft = (usedPercentLeft * canvas.height) - (paddleLeft.height / 2);
+                const maxMove = PADDLE_SPEED * deltaTime;
+                let diff = targetYLeft - paddleLeft.y;
+                if (Math.abs(diff) <= maxMove) {
+                    paddleLeft.y = targetYLeft;
+                } else {
+                    paddleLeft.y += Math.sign(diff) * maxMove;
+                }
             } else {
                 if (keys.w && paddleLeft.y > 0) paddleLeft.y -= PADDLE_SPEED * deltaTime;
                 if (keys.s && paddleLeft.y + paddleLeft.height < canvas.height) paddleLeft.y += PADDLE_SPEED * deltaTime;
@@ -219,7 +227,15 @@
             }
 
             if (usedPercentRight !== null) {
-                paddleRight.y = (usedPercentRight * canvas.height) - (paddleRight.height / 2);
+                // smooth movement towards target to avoid jumps
+                const targetYRight = (usedPercentRight * canvas.height) - (paddleRight.height / 2);
+                const maxMoveR = PADDLE_SPEED * deltaTime;
+                let diffR = targetYRight - paddleRight.y;
+                if (Math.abs(diffR) <= maxMoveR) {
+                    paddleRight.y = targetYRight;
+                } else {
+                    paddleRight.y += Math.sign(diffR) * maxMoveR;
+                }
             } else {
                 if (keys.ArrowUp && paddleRight.y > 0) paddleRight.y -= PADDLE_SPEED * deltaTime;
                 if (keys.ArrowDown && paddleRight.y + paddleRight.height < canvas.height) paddleRight.y += PADDLE_SPEED * deltaTime;
