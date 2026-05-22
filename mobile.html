@@ -62,12 +62,64 @@
             width: 100%;
             height: 100%;
         }
+        .motion-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            font-size: 15px;
+        }
+        .motion-toggle input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: #4CAF50;
+        }
+        #motion-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            pointer-events: none;
+            opacity: 0.5;
+        }
+        #tilt-bar-wrap {
+            width: 40px;
+            height: 180px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 20px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+        }
+        #tilt-bar {
+            width: 100%;
+            height: 50%;
+            background: #4CAF50;
+            border-radius: 20px;
+            transition: height 0.05s linear;
+        }
+        #tilt-label {
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+        }
     </style>
 </head>
 <body>
     <div id="join-screen">
         <h2>Pong Steuerung</h2>
         <input type="text" id="name-input" placeholder="Dein Name" />
+        <div class="motion-toggle">
+            <input type="checkbox" id="motion-checkbox" />
+            <label for="motion-checkbox">Motion Control (Neigung)</label>
+        </div>
         <div class="btn-container">
             <button onclick="join('left')">Links</button>
             <button onclick="join('right')">Rechts</button>
@@ -76,6 +128,10 @@
 
     <div id="control-screen">
         <div id="percent">50%</div>
+        <div id="motion-indicator" style="display:none;">
+            <div id="tilt-bar-wrap"><div id="tilt-bar"></div></div>
+            <div id="tilt-label">50%</div>
+        </div>
         <div id="touch-area"></div>
     </div>
 
@@ -87,6 +143,12 @@
         const nameInput = document.getElementById('name-input');
         const touchArea = document.getElementById('touch-area');
         const percent = document.getElementById('percent');
+        const motionCheckbox = document.getElementById('motion-checkbox');
+        const motionIndicator = document.getElementById('motion-indicator');
+        const tiltBar = document.getElementById('tilt-bar');
+        const tiltLabel = document.getElementById('tilt-label');
+
+        let motionEnabled = false;
 
         function join(side) {
             const name = nameInput.value.trim() || (side === 'left' ? 'Spieler Links' : 'Spieler Rechts');
@@ -95,6 +157,10 @@
             }
             joinScreen.style.display = 'none';
             controlScreen.style.display = 'block';
+
+            if (motionCheckbox.checked) {
+                startMotionControl();
+            }
         }
 
         function sendTouch(y) {
@@ -105,13 +171,66 @@
             }
         }
 
+        // --- Motion Control ---
+
+        function updateMotionUI(relativeY) {
+            const p = Math.round(relativeY * 100);
+            tiltLabel.textContent = p + '%';
+            tiltBar.style.height = p + '%';
+        }
+
+        function onOrientation(e) {
+            // gamma: left/right tilt, -90 to 90
+            // Wir nutzen gamma: -45° = oben (0), +45° = unten (1)
+            const gamma = e.gamma !== null ? e.gamma : 0;
+            const clampedGamma = Math.max(-45, Math.min(45, gamma));
+            const relativeY = (clampedGamma + 45) / 90;
+            updateMotionUI(relativeY);
+            if (socket) {
+                socket.emit('touchY', relativeY);
+            }
+        }
+
+        function startMotionControl() {
+            motionEnabled = true;
+            percent.style.display = 'none';
+            touchArea.style.pointerEvents = 'none';
+            motionIndicator.style.display = 'flex';
+
+            // iOS 13+ braucht explizite Erlaubnis
+            if (typeof DeviceOrientationEvent !== 'undefined' &&
+                typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(state => {
+                        if (state === 'granted') {
+                            window.addEventListener('deviceorientation', onOrientation);
+                        } else {
+                            showMotionFallback();
+                        }
+                    })
+                    .catch(() => showMotionFallback());
+            } else {
+                window.addEventListener('deviceorientation', onOrientation);
+            }
+        }
+
+        function showMotionFallback() {
+            motionEnabled = false;
+            percent.style.display = 'block';
+            touchArea.style.pointerEvents = '';
+            motionIndicator.style.display = 'none';
+            alert('Motion Control konnte nicht aktiviert werden. Touch-Steuerung wird verwendet.');
+        }
+
         touchArea.addEventListener('touchmove', (e) => {
+            if (motionEnabled) return;
             e.preventDefault();
             const touch = e.touches[0];
             sendTouch(touch.clientY / window.innerHeight);
         }, { passive: false });
 
         touchArea.addEventListener('mousemove', (e) => {
+            if (motionEnabled) return;
             if (e.buttons === 1) {
                 sendTouch(e.clientY / window.innerHeight);
             }
