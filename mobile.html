@@ -48,16 +48,7 @@
             height: 100vh;
             position: relative;
         }
-        #percent {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 110px;
-            font-weight: bold;
-            opacity: 0.3;
-            pointer-events: none;
-        }
+        /* percent overlay removed */
         #touch-area {
             width: 100%;
             height: 100%;
@@ -76,39 +67,28 @@
             cursor: pointer;
             accent-color: #4CAF50;
         }
+        /* Simplified: hide graphical slider, keep percentage text */
         #motion-indicator {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            display: flex;
-            flex-direction: column;
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            transform: none;
+            display: none; /* shown when motion control active */
             align-items: center;
-            gap: 12px;
+            gap: 6px;
             pointer-events: none;
-            opacity: 0.5;
+            opacity: 1;
+            z-index: 999;
         }
-        #tilt-bar-wrap {
-            width: 40px;
-            height: 180px;
-            background: rgba(255,255,255,0.15);
-            border-radius: 20px;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-        }
-        #tilt-bar {
-            width: 100%;
-            height: 50%;
-            background: #4CAF50;
-            border-radius: 20px;
-            transition: height 0.05s linear;
-        }
+        #tilt-bar-wrap { display: none; }
+        #tilt-bar { display: none; }
         #tilt-label {
             font-size: 18px;
             font-weight: bold;
             color: #fff;
+            background: rgba(0,0,0,0.35);
+            padding: 6px 8px;
+            border-radius: 6px;
         }
     </style>
 </head>
@@ -127,7 +107,7 @@
     </div>
 
     <div id="control-screen">
-        <div id="percent">50%</div>
+        <!-- percent overlay removed -->
         <div id="motion-indicator" style="display:none;">
             <div id="tilt-bar-wrap"><div id="tilt-bar"></div></div>
             <div id="tilt-label">50%</div>
@@ -142,7 +122,6 @@
         const controlScreen = document.getElementById('control-screen');
         const nameInput = document.getElementById('name-input');
         const touchArea = document.getElementById('touch-area');
-        const percent = document.getElementById('percent');
         const motionCheckbox = document.getElementById('motion-checkbox');
         const motionIndicator = document.getElementById('motion-indicator');
         const tiltBar = document.getElementById('tilt-bar');
@@ -165,7 +144,7 @@
 
         function sendTouch(y) {
             const relativeY = Math.max(0, Math.min(1, y));
-            percent.textContent = Math.round(relativeY * 100) + '%';
+            // percent overlay removed; just send value
             if (socket) {
                 socket.emit('touchY', relativeY);
             }
@@ -193,7 +172,6 @@
 
         function startMotionControl() {
             motionEnabled = true;
-            percent.style.display = 'none';
             touchArea.style.pointerEvents = 'none';
             motionIndicator.style.display = 'flex';
 
@@ -216,7 +194,6 @@
 
         function showMotionFallback() {
             motionEnabled = false;
-            percent.style.display = 'block';
             touchArea.style.pointerEvents = '';
             motionIndicator.style.display = 'none';
             alert('Motion Control konnte nicht aktiviert werden. Touch-Steuerung wird verwendet.');
